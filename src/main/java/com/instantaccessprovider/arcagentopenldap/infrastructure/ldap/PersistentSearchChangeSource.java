@@ -23,6 +23,10 @@ import org.apache.directory.api.ldap.model.message.controls.EntryChange;
 import org.apache.directory.api.ldap.model.message.controls.PersistentSearch;
 import org.apache.directory.api.ldap.model.message.controls.PersistentSearchImpl;
 import org.apache.directory.api.ldap.model.name.Dn;
+import org.apache.directory.api.ldap.model.name.Ava;
+import org.apache.directory.api.ldap.model.name.Rdn;
+import org.apache.directory.api.ldap.model.schema.SchemaManager;
+import org.apache.directory.api.ldap.schema.manager.impl.DefaultSchemaManager;
 import org.apache.directory.api.util.GeneralizedTime;
 import org.apache.directory.ldap.client.api.LdapConnectionConfig;
 import org.apache.directory.ldap.client.api.LdapNetworkConnection;
@@ -71,6 +75,16 @@ public class PersistentSearchChangeSource implements LdapChangeSourcePort {
     private final String filter;
     private final long timeoutMillis;
 
+    private static final SchemaManager SCHEMA = newSchemaManager();
+
+    private static SchemaManager newSchemaManager() {
+        try {
+            return new DefaultSchemaManager();
+        } catch (Exception e) {
+            throw new IllegalStateException("schema LDAP embarque indisponible", e);
+        }
+    }
+
     public PersistentSearchChangeSource(AgentProperties.Ldap ldap, String filter, long timeoutMillis) {
         this.ldap = ldap;
         this.filter = filter;
@@ -80,6 +94,9 @@ public class PersistentSearchChangeSource implements LdapChangeSourcePort {
     @Override
     public ChangeStream open(Consumer<LdapNotification> onNotification, Consumer<Throwable> onFailure) {
         LdapNetworkConnection connection = connect();
+        // La recherche persistante reste silencieuse tant que l'annuaire ne change pas : le delai applique
+        // aux recherches ordinaires la ferait echouer (le bind a deja eu lieu avec son delai).
+        connection.setTimeOut(Long.MAX_VALUE);
         SearchCursor cursor;
         try {
             SearchRequest request = new SearchRequestImpl();
@@ -199,9 +216,9 @@ public class PersistentSearchChangeSource implements LdapChangeSourcePort {
     static LdapEntry toEntry(Entry entry) throws Exception {
         Instant createdAt = timestamp(entry, "createTimestamp");
         Instant modifiedAt = timestamp(entry, "modifyTimestamp");
-        String author = first(entry, "modifiersName");
+        String author = readableDn(first(entry, "modifiersName"));
         if (author == null) {
-            author = first(entry, "creatorsName");
+            author = readableDn(first(entry, "creatorsName"));
         }
 
         List<String> objectClasses = new ArrayList<>();
@@ -235,6 +252,32 @@ public class PersistentSearchChangeSource implements LdapChangeSourcePort {
     private static String first(Entry entry, String attribute) throws Exception {
         Attribute value = entry.get(attribute);
         return value == null ? null : value.getString();
+    }
+
+    /**
+     * Apache DS renvoie les DN d'auteur sous forme normalisee (OID a la place des noms d'attributs, espaces
+     * autour des valeurs). Cette methode retablit une forme lisible, par exemple {@code uid=admin,ou=system}.
+     * Une valeur qui ne se laisse pas analyser est rendue telle quelle.
+     */
+    static String readableDn(String dn) {
+        if (dn == null) {
+            return null;
+        }
+        try {
+            Dn parsed = new Dn(SCHEMA, dn);
+            List<String> rdns = new ArrayList<>();
+            for (Rdn rdn : parsed.getRdns()) {
+                List<String> avas = new ArrayList<>();
+                for (Ava ava : rdn) {
+                    String type = SCHEMA.getAttributeType(ava.getType()).getName();
+                    avas.add(type + "=" + ava.getValue().getString().trim());
+                }
+                rdns.add(String.join("+", avas));
+            }
+            return String.join(",", rdns);
+        } catch (Exception e) {
+            return dn;
+        }
     }
 
     private static Instant timestamp(Entry entry, String attribute) throws Exception {

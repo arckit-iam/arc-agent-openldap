@@ -69,6 +69,11 @@
             <artifactId>api-ldap-codec-standalone</artifactId>
             <version>${directory-api.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.apache.directory.api</groupId>
+            <artifactId>api-ldap-schema-data</artifactId>
+            <version>${directory-api.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

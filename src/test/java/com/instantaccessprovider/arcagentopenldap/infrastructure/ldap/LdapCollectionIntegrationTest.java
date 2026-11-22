@@ -78,6 +78,9 @@ public class LdapCollectionIntegrationTest extends AbstractLdapTestUnit {
                 await().atMost(Duration.ofSeconds(20)).until(() -> cursors.containsKey(SYSTEM));
                 assertTrue(published.isEmpty(), "le premier demarrage ne publie pas l'existant");
 
+                // Silence plus long que le delai des recherches ordinaires (2 s) : le flux doit rester ouvert.
+                Thread.sleep(4_000);
+
                 // Modification faite par un tiers
                 admin.modify(ALICE, new DefaultModification(
                         ModificationOperation.REPLACE_ATTRIBUTE, "mail", "alice@corp.example.com"));
@@ -86,7 +89,8 @@ public class LdapCollectionIntegrationTest extends AbstractLdapTestUnit {
                 assertEquals(LdapChangeType.MODIFY, modified.type());
                 assertEquals(ALICE, modified.dn());
                 assertNotNull(modified.entryUuid());
-                assertEquals(LdapChange.ORIGIN_EXTERNAL, modified.origin());
+                assertEquals(LdapChange.ORIGIN_EXTERNAL, modified.origin(), "le flux ne doit pas avoir ete coupe");
+                assertEquals("uid=admin,ou=system", modified.modifiedBy());
                 assertTrue(modified.changes().stream().anyMatch(c ->
                         c.attribute().equalsIgnoreCase("mail")
                                 && c.oldValues().contains("alice@example.com")
@@ -116,6 +120,15 @@ public class LdapCollectionIntegrationTest extends AbstractLdapTestUnit {
     }
 
     @Test
+    void normalisedAuthorDnIsMadeReadable() {
+        assertEquals("uid=admin,ou=system",
+                PersistentSearchChangeSource.readableDn("0.9.2342.19200300.100.1.1= admin ,2.5.4.11= system "));
+        assertEquals("uid=svc,dc=example,dc=com",
+                PersistentSearchChangeSource.readableDn("uid=svc,dc=example,dc=com"));
+        assertNull(PersistentSearchChangeSource.readableDn(null));
+    }
+
+    @Test
     void modifiedSinceFindsRecentEntriesOnly() throws Exception {
         try (LdapNetworkConnection admin = connect()) {
             admin.add(person(ALICE, "alice", "alice@example.com"));
@@ -141,7 +154,7 @@ public class LdapCollectionIntegrationTest extends AbstractLdapTestUnit {
         AgentProperties.Ldap ldap = new AgentProperties.Ldap(
                 "ldap://localhost:" + getLdapServer().getPort(), "dc=example,dc=com",
                 "uid=admin,ou=system", "secret", "ou=Users", "ou=Groups", "");
-        return new PersistentSearchChangeSource(ldap, FILTER, 10_000);
+        return new PersistentSearchChangeSource(ldap, FILTER, 2_000);
     }
 
     private LdapCollectionService newService(PersistentSearchChangeSource source) {
