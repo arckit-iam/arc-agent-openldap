@@ -2,13 +2,14 @@
 
 Agent de provisioning LDAP (OpenLDAP, Apache DS, tout annuaire LDAPv3 de schéma `inetOrgPerson` / `groupOfNames`) pour InstantAccessProvider.
 
-> **Statut : première version.** Seul le provisioning est implémenté. La collecte temps réel des changements vers Kafka (`iam.raw.ldap`) est en conception : voir [arc-docs, document 12](https://github.com/arckit-iam/arc-docs/blob/main/docs/12-agent-openldap.md).
+> **Statut : version 0.2.** Provisioning et collecte temps réel des changements vers Kafka (`iam.raw.ldap`), validés sur Apache DS. La collecte OpenLDAP (`accesslog` / Syncrepl) reste à faire : voir [arc-docs, document 12](https://github.com/arckit-iam/arc-docs/blob/main/docs/12-agent-openldap.md).
 
 ## But
 
 - Consommer les commandes publiées par `arc-publisher` sur `arc.provisioning.*`
 - Filtrer strictement sur `targetSystem` (`ldap://LDAP01`, …)
 - Exécuter l'opération LDAP correspondante, ou la simuler en mode dry-run
+- Publier chaque changement de l'annuaire sur `iam.raw.ldap`, dès qu'il survient (collecte optionnelle, voir plus bas)
 
 Ce design permet de lancer **1 pod par annuaire cible**. Le contrat d'entrée est identique à celui de `arc-agent-ad`.
 
@@ -48,6 +49,22 @@ Particularités :
 | `ARC_AGENT_LDAP_GROUP_PLACEHOLDER_MEMBER` | Membre technique des groupes | compte de service |
 
 Fournir le mot de passe par secret d'exécution, jamais dans l'image ni dans le dépôt.
+
+### Collecte temps réel (optionnelle)
+
+Désactivée par défaut. Une fois activée, l'agent ouvre une recherche persistante (Persistent Search) sur l'annuaire, sans polling, et publie chaque ajout, modification, suppression ou renommage sur `iam.raw.ldap`. Le message porte `origin` : `arc-agent` pour les écritures de l'agent, `external` pour les autres, `catch-up` / `reconcile` pour les reprises. Le curseur de reprise est conservé dans le topic compacté `iam.raw.ldap.cursor` (à créer avec `cleanup.policy=compact`). Au premier démarrage, rien n'est publié.
+
+| Variable | Rôle | Défaut |
+|---|---|---|
+| `ARC_AGENT_COLLECTION_ENABLED` | Active la collecte | `false` |
+| `ARC_TOPICS_RAW_LDAP` | Topic des changements | `iam.raw.ldap` |
+| `ARC_TOPICS_RAW_LDAP_CURSOR` | Topic compacté du curseur | `iam.raw.ldap.cursor` |
+| `ARC_AGENT_COLLECTION_FILTER` | Filtre LDAP des entrées suivies | `(\|(objectClass=inetOrgPerson)(objectClass=groupOfNames))` |
+| `ARC_AGENT_COLLECTION_RETRY_DELAY` | Délai avant reconnexion | `10s` |
+| `ARC_AGENT_COLLECTION_OWN_WRITE_TTL` | Durée de mémorisation des écritures de l'agent (anti-écho) | `30s` |
+| `ARC_AGENT_COLLECTION_TIMEOUT` | Délai des opérations LDAP de collecte | `30s` |
+
+Le compte de service doit pouvoir lire l'annuaire. Détails et limites : [document 12](https://github.com/arckit-iam/arc-docs/blob/main/docs/12-agent-openldap.md).
 
 ### Certificats (LDAPS)
 
