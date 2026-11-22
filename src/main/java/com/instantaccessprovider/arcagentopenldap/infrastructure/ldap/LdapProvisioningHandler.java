@@ -5,9 +5,12 @@ package com.instantaccessprovider.arcagentopenldap.infrastructure.ldap;
 
 import com.instantaccessprovider.arcagentopenldap.config.AgentProperties;
 import com.instantaccessprovider.arcagentopenldap.domain.ProvisioningCommand;
+import com.instantaccessprovider.arcagentopenldap.domain.model.LdapChangeType;
+import com.instantaccessprovider.arcagentopenldap.domain.port.OwnWriteRegistryPort;
 import com.instantaccessprovider.arcagentopenldap.domain.port.ProvisioningHandlerPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ldap.AttributeInUseException;
 import org.springframework.ldap.NameAlreadyBoundException;
 import org.springframework.ldap.NameNotFoundException;
@@ -66,10 +69,29 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
 
     private final AgentProperties properties;
     private final LdapTemplate ldapTemplate;
+    private final OwnWriteRegistryPort ownWrites;
 
+    /** Sans collecte : aucune ecriture n'a besoin d'etre enregistree. */
     public LdapProvisioningHandler(AgentProperties properties, LdapTemplate ldapTemplate) {
+        this(properties, ldapTemplate, new OwnWriteRegistryPort() {
+            @Override
+            public void recordWrite(String dn, LdapChangeType type) {
+                // sans objet
+            }
+
+            @Override
+            public boolean consumeIfOwn(String dn, LdapChangeType type) {
+                return false;
+            }
+        });
+    }
+
+    @Autowired
+    public LdapProvisioningHandler(AgentProperties properties, LdapTemplate ldapTemplate,
+                                   OwnWriteRegistryPort ownWrites) {
         this.properties = properties;
         this.ldapTemplate = ldapTemplate;
+        this.ownWrites = ownWrites;
     }
 
     @Override
@@ -130,6 +152,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
         values.forEach(attrs::put);
 
         try {
+            ownWrites.recordWrite(dn.toString(), LdapChangeType.ADD);
             ldapTemplate.bind(dn, null, attrs);
             log.info("Utilisateur cree: dn={}", dn);
         } catch (NameAlreadyBoundException e) {
@@ -144,6 +167,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
             log.info("Aucun attribut modifiable fourni, rien a faire: dn={}", dn);
             return;
         }
+        ownWrites.recordWrite(dn.toString(), LdapChangeType.MODIFY);
         ldapTemplate.modifyAttributes(dn, replaceItems(values));
         log.info("Utilisateur modifie: dn={} attributs={}", dn, values.keySet());
     }
@@ -151,6 +175,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
     private void deleteUser(ProvisioningCommand command) {
         LdapName dn = userDn(requireNonBlank(command.identityId(), "identityId", command));
         try {
+            ownWrites.recordWrite(dn.toString(), LdapChangeType.DELETE);
             ldapTemplate.unbind(dn);
             log.info("Utilisateur supprime: dn={}", dn);
         } catch (NameNotFoundException e) {
@@ -174,6 +199,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
         }
 
         try {
+            ownWrites.recordWrite(dn.toString(), LdapChangeType.ADD);
             ldapTemplate.bind(dn, null, attrs);
             log.info("Groupe cree: dn={}", dn);
         } catch (NameAlreadyBoundException e) {
@@ -188,6 +214,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
             log.info("Aucun attribut modifiable fourni, rien a faire: dn={}", dn);
             return;
         }
+        ownWrites.recordWrite(dn.toString(), LdapChangeType.MODIFY);
         ldapTemplate.modifyAttributes(dn, replaceItems(values));
         log.info("Groupe modifie: dn={} attributs={}", dn, values.keySet());
     }
@@ -195,6 +222,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
     private void deleteGroup(ProvisioningCommand command) {
         LdapName dn = groupDn(requireNonBlank(resolveEntitlementId(command), "entitlementId", command));
         try {
+            ownWrites.recordWrite(dn.toString(), LdapChangeType.DELETE);
             ldapTemplate.unbind(dn);
             log.info("Groupe supprime: dn={}", dn);
         } catch (NameNotFoundException e) {
@@ -209,6 +237,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
         String memberDn = assignmentUserDn(command).toString();
         ModificationItem mod = new ModificationItem(DirContext.ADD_ATTRIBUTE, new BasicAttribute("member", memberDn));
         try {
+            ownWrites.recordWrite(groupDn.toString(), LdapChangeType.MODIFY);
             ldapTemplate.modifyAttributes(groupDn, new ModificationItem[]{mod});
             log.info("Membre ajoute: user={} group={}", memberDn, groupDn);
         } catch (AttributeInUseException e) {
@@ -225,6 +254,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
         }
         ModificationItem mod = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("member", memberDn));
         try {
+            ownWrites.recordWrite(groupDn.toString(), LdapChangeType.MODIFY);
             ldapTemplate.modifyAttributes(groupDn, new ModificationItem[]{mod});
             log.info("Membre retire: user={} group={}", memberDn, groupDn);
         } catch (NoSuchAttributeException e) {

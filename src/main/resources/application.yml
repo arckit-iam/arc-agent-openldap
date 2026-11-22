@@ -25,6 +25,14 @@ arc:
       users-ou: ${ARC_AGENT_LDAP_USERS_OU:ou=Users}
       groups-ou: ${ARC_AGENT_LDAP_GROUPS_OU:ou=Groups}
       group-placeholder-member: ${ARC_AGENT_LDAP_GROUP_PLACEHOLDER_MEMBER:}
+    collection:
+      enabled: ${ARC_AGENT_COLLECTION_ENABLED:false}
+      topic: ${ARC_TOPICS_RAW_LDAP:iam.raw.ldap}
+      cursor-topic: ${ARC_TOPICS_RAW_LDAP_CURSOR:iam.raw.ldap.cursor}
+      filter: ${ARC_AGENT_COLLECTION_FILTER:(|(objectClass=inetOrgPerson)(objectClass=groupOfNames))}
+      retry-delay: ${ARC_AGENT_COLLECTION_RETRY_DELAY:10s}
+      own-write-ttl: ${ARC_AGENT_COLLECTION_OWN_WRITE_TTL:30s}
+      timeout: ${ARC_AGENT_COLLECTION_TIMEOUT:30s}
 
 logging:
   level:
