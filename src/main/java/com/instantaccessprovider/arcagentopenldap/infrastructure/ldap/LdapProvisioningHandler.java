@@ -97,14 +97,14 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
     @Override
     public void execute(ProvisioningCommand command, String topic) {
         if (properties.dryRun()) {
-            log.info("[DRY-RUN] jobId={} action={} topic={} identity={} targetSystem={} executeAt={}",
-                    command.jobId(), command.action(), topic, command.identityName(),
+            log.info("[DRY-RUN] orderId={} action={} topic={} identity={} targetSystem={} executeAt={}",
+                    command.orderId(), command.action(), topic, command.identityName(),
                     command.targetSystem(), command.executeAt());
             return;
         }
 
-        log.info("Execution LDAP jobId={} action={} topic={} identity={}",
-                command.jobId(), command.action(), topic, command.identityId());
+        log.info("Execution LDAP orderId={} action={} topic={} identity={}",
+                command.orderId(), command.action(), topic, command.identityId());
 
         AgentProperties.Topics topics = properties.topics();
         String action = command.action() != null ? command.action().toUpperCase(Locale.ROOT) : "";
@@ -130,7 +130,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
                 default -> warnUnknownAction("entitlement", command);
             }
         } else {
-            log.warn("Topic inconnu ignore: topic={} jobId={}", topic, command.jobId());
+            log.warn("Topic inconnu ignore: topic={} orderId={}", topic, command.orderId());
         }
     }
 
@@ -138,7 +138,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
 
     private void createUser(ProvisioningCommand command) {
         String uid = requireNonBlank(command.identityId(), "identityId", command);
-        LdapName dn = userDn(uid);
+        LdapName dn = userDn(command.accountType(), uid);
 
         Attributes attrs = new BasicAttributes(true);
         attrs.put(objectClass("top", "person", "organizationalPerson", "inetOrgPerson"));
@@ -161,7 +161,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
     }
 
     private void modifyUser(ProvisioningCommand command) {
-        LdapName dn = userDn(requireNonBlank(command.identityId(), "identityId", command));
+        LdapName dn = userDn(command.accountType(), requireNonBlank(command.identityId(), "identityId", command));
         Map<String, String> values = allowedValues(command, USER_ATTRIBUTES);
         if (values.isEmpty()) {
             log.info("Aucun attribut modifiable fourni, rien a faire: dn={}", dn);
@@ -173,7 +173,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
     }
 
     private void deleteUser(ProvisioningCommand command) {
-        LdapName dn = userDn(requireNonBlank(command.identityId(), "identityId", command));
+        LdapName dn = userDn(command.accountType(), requireNonBlank(command.identityId(), "identityId", command));
         try {
             ownWrites.recordWrite(dn.toString(), LdapChangeType.DELETE);
             ldapTemplate.unbind(dn);
@@ -249,7 +249,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
         LdapName groupDn = assignmentGroupDn(command);
         String memberDn = assignmentUserDn(command).toString();
         if (memberDn.equalsIgnoreCase(placeholderMember())) {
-            log.warn("Retrait du membre technique refuse: group={} jobId={}", groupDn, command.jobId());
+            log.warn("Retrait du membre technique refuse: group={} orderId={}", groupDn, command.orderId());
             return;
         }
         ModificationItem mod = new ModificationItem(DirContext.REMOVE_ATTRIBUTE, new BasicAttribute("member", memberDn));
@@ -267,7 +267,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
         String uid = target != null
                 ? firstNonBlank(target.externalId(), target.name(), target.displayName(), command.identityId())
                 : command.identityId();
-        return userDn(requireNonBlank(uid, "identity", command));
+        return userDn(target != null ? target.accountType() : null, requireNonBlank(uid, "identity", command));
     }
 
     private LdapName assignmentGroupDn(ProvisioningCommand command) {
@@ -280,8 +280,28 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
 
     // ---- Utilitaires -----------------------------------------------------------------------
 
-    private LdapName userDn(String uid) {
-        return LdapNameBuilder.newInstance(branch(properties.ldap().usersOu())).add("uid", uid).build();
+    /**
+     * DN d'une identite selon son type de compte : la branche vient de la configuration de l'agent
+     * ({@code account-type-ous}), jamais de l'ordre. Sans type, branche {@code users-ou} ; un type non
+     * configure est refuse plutot que range au mauvais endroit.
+     */
+    LdapName userDn(String accountType, String uid) {
+        return LdapNameBuilder.newInstance(branch(userBranch(accountType))).add("uid", uid).build();
+    }
+
+    private String userBranch(String accountType) {
+        if (accountType == null || accountType.isBlank()) {
+            return properties.ldap().usersOu();
+        }
+        Map<String, String> branches = properties.ldap().accountTypeOus();
+        String ou = branches == null ? null : branches.entrySet().stream()
+                .filter(e -> e.getKey().equalsIgnoreCase(accountType.trim()))
+                .map(Map.Entry::getValue)
+                .findFirst().orElse(null);
+        if (ou == null || ou.isBlank()) {
+            throw new IllegalArgumentException("Type de compte inconnu de l'agent: " + accountType);
+        }
+        return ou;
     }
 
     private LdapName groupDn(String cn) {
@@ -320,7 +340,7 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
             }
             String ldapName = allowed.get(attribute.name().toLowerCase(Locale.ROOT));
             if (ldapName == null) {
-                log.warn("Attribut ignore (hors liste blanche): name={} jobId={}", attribute.name(), command.jobId());
+                log.warn("Attribut ignore (hors liste blanche): name={} orderId={}", attribute.name(), command.orderId());
                 continue;
             }
             result.put(ldapName, attribute.newValue().toString());
@@ -345,13 +365,13 @@ public class LdapProvisioningHandler implements ProvisioningHandlerPort {
 
     private static String requireNonBlank(String value, String field, ProvisioningCommand command) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Champ obligatoire absent: " + field + " (jobId=" + command.jobId() + ")");
+            throw new IllegalArgumentException("Champ obligatoire absent: " + field + " (orderId=" + command.orderId() + ")");
         }
         return value;
     }
 
     private static void warnUnknownAction(String type, ProvisioningCommand command) {
-        log.warn("Action inconnue sur topic {}: action={} jobId={}", type, command.action(), command.jobId());
+        log.warn("Action inconnue sur topic {}: action={} orderId={}", type, command.action(), command.orderId());
     }
 
     private static String firstNonBlank(String... values) {

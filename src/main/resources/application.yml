@@ -23,6 +23,11 @@ arc:
       bind-dn: ${ARC_AGENT_LDAP_BIND_DN:}
       bind-password: ${ARC_AGENT_LDAP_BIND_PASSWORD:}
       users-ou: ${ARC_AGENT_LDAP_USERS_OU:ou=Users}
+      # Type de compte -> branche (relative a base-dn). Les managers n'envoient que le type.
+      account-type-ous:
+        standard: ${ARC_AGENT_LDAP_ACCOUNT_TYPE_STANDARD_OU:ou=Users}
+        admin: ${ARC_AGENT_LDAP_ACCOUNT_TYPE_ADMIN_OU:ou=Admins}
+        service-account: ${ARC_AGENT_LDAP_ACCOUNT_TYPE_SERVICE_ACCOUNT_OU:ou=Services}
       groups-ou: ${ARC_AGENT_LDAP_GROUPS_OU:ou=Groups}
       group-placeholder-member: ${ARC_AGENT_LDAP_GROUP_PLACEHOLDER_MEMBER:}
     collection:

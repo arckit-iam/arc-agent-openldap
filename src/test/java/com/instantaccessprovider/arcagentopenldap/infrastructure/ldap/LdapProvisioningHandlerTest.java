@@ -69,6 +69,8 @@ public class LdapProvisioningHandlerTest extends AbstractLdapTestUnit {
 
         createOuIfAbsent("Users");
         createOuIfAbsent("Groups");
+        createOuIfAbsent("Staff");
+        createOuIfAbsent("Admins");
 
         handler = new LdapProvisioningHandler(properties(false), ldapTemplate);
     }
@@ -109,6 +111,28 @@ public class LdapProvisioningHandlerTest extends AbstractLdapTestUnit {
     }
 
     @Test
+    void accountTypeDecidesWhereTheIdentityIsStored() throws Exception {
+        handler.execute(typed("CREATE", "std1", "standard"), TOPIC_IDENTITY);
+        handler.execute(typed("CREATE", "adm1", "ADMIN"), TOPIC_IDENTITY);
+
+        assertTrue(exists("uid=std1,ou=Staff"));
+        assertTrue(exists("uid=adm1,ou=Admins"));
+        assertFalse(exists("uid=std1,ou=Users"));
+
+        handler.execute(typed("DELETE", "std1", "standard"), TOPIC_IDENTITY);
+        handler.execute(typed("DELETE", "adm1", "admin"), TOPIC_IDENTITY);
+        assertFalse(exists("uid=std1,ou=Staff"));
+        assertFalse(exists("uid=adm1,ou=Admins"));
+    }
+
+    @Test
+    void unknownAccountTypeIsRefused() {
+        assertThrows(IllegalArgumentException.class,
+                () -> handler.execute(typed("CREATE", "ghost", "contractor"), TOPIC_IDENTITY));
+        assertFalse(exists("uid=ghost,ou=Users"));
+    }
+
+    @Test
     void specialCharactersInIdentifierAreEscapedInDn() throws Exception {
         handler.execute(command("CREATE", "a,ou=evil", "Evil", null), TOPIC_IDENTITY);
 
@@ -124,7 +148,7 @@ public class LdapProvisioningHandlerTest extends AbstractLdapTestUnit {
         handler.execute(command("CREATE", "bob", "Bob", null), TOPIC_IDENTITY);
 
         ProvisioningCommand createGroup = new ProvisioningCommand("job", "CREATE", "grp-fin", "Finance",
-                "ldap://LDAP01", "grp-fin", "Finance", null, null, null, null, null, null, null);
+                "ldap://LDAP01", "grp-fin", "Finance", null, null, null, null, null, null, null, null);
         handler.execute(createGroup, TOPIC_ENTITLEMENT);
 
         Attributes group = read("cn=grp-fin,ou=Groups");
@@ -148,7 +172,7 @@ public class LdapProvisioningHandlerTest extends AbstractLdapTestUnit {
         assertTrue(values(read("cn=grp-fin,ou=Groups"), "member").contains("cn=arc-placeholder," + BASE));
 
         handler.execute(new ProvisioningCommand("job", "DELETE", "grp-fin", null, "ldap://LDAP01",
-                "grp-fin", null, null, null, null, null, null, null, null), TOPIC_ENTITLEMENT);
+                "grp-fin", null, null, null, null, null, null, null, null, null), TOPIC_ENTITLEMENT);
         assertFalse(exists("cn=grp-fin,ou=Groups"));
 
         handler.execute(command("DELETE", "alice", null, null), TOPIC_IDENTITY);
@@ -177,20 +201,26 @@ public class LdapProvisioningHandlerTest extends AbstractLdapTestUnit {
                 "ldap://LDAP01",
                 new AgentProperties.Topics(TOPIC_IDENTITY, TOPIC_ASSIGNMENT, TOPIC_ENTITLEMENT),
                 dryRun,
-                new AgentProperties.Ldap("ldap://unused", BASE, "", "", "ou=Users", "ou=Groups", ""));
+                new AgentProperties.Ldap("ldap://unused", BASE, "", "", "ou=Users", "ou=Groups", "",
+                        java.util.Map.of("standard", "ou=Staff", "admin", "ou=Admins")));
     }
 
     private static ProvisioningCommand command(String action, String uid, String displayName,
                                                List<ProvisioningCommand.ChangedAttribute> attributes) {
         return new ProvisioningCommand("job-" + uid, action, uid, displayName, "ldap://LDAP01",
-                null, null, null, attributes, null, "corr", null, null, null);
+                null, null, null, attributes, null, "corr", null, null, null, null);
+    }
+
+    private static ProvisioningCommand typed(String action, String uid, String accountType) {
+        return new ProvisioningCommand("order-" + uid, action, uid, uid, "ldap://LDAP01",
+                null, null, null, null, null, "corr", "user", accountType, null, null);
     }
 
     private static ProvisioningCommand assignment(String action, String uid, String group) {
         return new ProvisioningCommand("job-assign", action, uid, null, "ldap://LDAP01",
-                group, null, null, null, null, "corr", null,
-                new ProvisioningCommand.NestedTarget(uid, uid, uid, "user", "ldap://LDAP01"),
-                new ProvisioningCommand.NestedTarget(group, group, group, "group", "ldap://LDAP01"));
+                group, null, null, null, null, "corr", null, null,
+                new ProvisioningCommand.NestedTarget(uid, uid, uid, "user", null, "ldap://LDAP01"),
+                new ProvisioningCommand.NestedTarget(group, group, group, "group", null, "ldap://LDAP01"));
     }
 
     private static ProvisioningCommand.ChangedAttribute attr(String name, String value) {

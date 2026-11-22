@@ -153,7 +153,7 @@ public class LdapCollectionIntegrationTest extends AbstractLdapTestUnit {
     private PersistentSearchChangeSource newSource() {
         AgentProperties.Ldap ldap = new AgentProperties.Ldap(
                 "ldap://localhost:" + getLdapServer().getPort(), "dc=example,dc=com",
-                "uid=admin,ou=system", "secret", "ou=Users", "ou=Groups", "");
+                "uid=admin,ou=system", "secret", "ou=Users", "ou=Groups", "", java.util.Map.of());
         return new PersistentSearchChangeSource(ldap, FILTER, 2_000);
     }
 

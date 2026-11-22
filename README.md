@@ -17,7 +17,7 @@ Ce design permet de lancer **1 pod par annuaire cible**. Le contrat d'entrée es
 
 | Topic | Action | Opération LDAP |
 |---|---|---|
-| `arc.provisioning.identity` | `CREATE` | ajout d'une entrée `inetOrgPerson` (`uid=<identityId>`) sous `ARC_AGENT_LDAP_USERS_OU` |
+| `arc.provisioning.identity` | `CREATE` | ajout d'une entrée `inetOrgPerson` (`uid=<identityId>`) sous la branche associée au `accountType` de l'ordre (voir `ARC_AGENT_LDAP_ACCOUNT_TYPE_*_OU`), ou sous `ARC_AGENT_LDAP_USERS_OU` si l'ordre n'a pas de type |
 | | `MODIFY` | remplacement des attributs fournis |
 | | `DELETE` | suppression de l'entrée |
 | `arc.provisioning.entitlement` | `CREATE` / `MODIFY` / `DELETE` | idem pour une entrée `groupOfNames` (`cn=<entitlementId>`) sous `ARC_AGENT_LDAP_GROUPS_OU` |
@@ -45,10 +45,15 @@ Particularités :
 | `ARC_AGENT_LDAP_URL` | URL de l'annuaire (`ldaps://` hors démonstration) | `ldap://localhost:10389` |
 | `ARC_AGENT_LDAP_BASE_DN` | Racine de l'annuaire | `dc=example,dc=com` |
 | `ARC_AGENT_LDAP_BIND_DN` / `ARC_AGENT_LDAP_BIND_PASSWORD` | Compte de service (vide : connexion anonyme) | vide |
-| `ARC_AGENT_LDAP_USERS_OU` / `ARC_AGENT_LDAP_GROUPS_OU` | Branches des identités et des groupes, relatives à la racine | `ou=Users` / `ou=Groups` |
+| `ARC_AGENT_LDAP_USERS_OU` / `ARC_AGENT_LDAP_GROUPS_OU` | Branches des identités (sans type de compte) et des groupes, relatives à la racine | `ou=Users` / `ou=Groups` |
+| `ARC_AGENT_LDAP_ACCOUNT_TYPE_STANDARD_OU` | Branche des comptes de type `standard` | `ou=Users` |
+| `ARC_AGENT_LDAP_ACCOUNT_TYPE_ADMIN_OU` | Branche des comptes de type `admin` | `ou=Admins` |
+| `ARC_AGENT_LDAP_ACCOUNT_TYPE_SERVICE_ACCOUNT_OU` | Branche des comptes de type `service-account` | `ou=Services` |
 | `ARC_AGENT_LDAP_GROUP_PLACEHOLDER_MEMBER` | Membre technique des groupes | compte de service |
 
 Fournir le mot de passe par secret d'exécution, jamais dans l'image ni dans le dépôt.
+
+Les managers (identity-manager, product-manager) ne connaissent pas l'annuaire : ils envoient uniquement le type de compte (`standard`, `admin`, `service-account`) et l'agent détermine la branche cible. Un type absent de la configuration (ou configuré à vide) est refusé plutôt que rangé au mauvais endroit.
 
 ### Collecte temps réel (optionnelle)
 

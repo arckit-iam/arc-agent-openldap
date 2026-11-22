@@ -14,7 +14,7 @@ import java.util.List;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ProvisioningCommand(
-        String jobId,
+        String orderId,
         @JsonProperty("eventType") String action,
         @JsonProperty("externalId") String identityId,
         @JsonProperty("displayName") String identityName,
@@ -26,6 +26,7 @@ public record ProvisioningCommand(
         @JsonProperty("timestamp") OffsetDateTime executeAt,
         String correlationId,
         String type,
+        String accountType,
         NestedTarget identity,
         NestedTarget entitlement
 ) {
@@ -33,5 +34,5 @@ public record ProvisioningCommand(
     public record ChangedAttribute(String name, Object oldValue, Object newValue) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record NestedTarget(String name, String displayName, String externalId, String type, String system) {}
+    public record NestedTarget(String name, String displayName, String externalId, String type, String accountType, String system) {}
 }

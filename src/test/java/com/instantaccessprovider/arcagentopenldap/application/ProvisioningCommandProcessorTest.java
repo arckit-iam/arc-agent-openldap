@@ -42,18 +42,18 @@ class ProvisioningCommandProcessorTest {
 
     @Test
     void shouldHandleCommandWhenTargetMatches() throws Exception {
-        ProvisioningCommand command = command("job-1", "ldap://LDAP01");
+        ProvisioningCommand command = command("order-1", "ldap://LDAP01");
 
         processor.process(objectMapper.writeValueAsString(command), "arc.provisioning.assignment");
 
-        verify(handler).execute(argThat(cmd -> "job-1".equals(cmd.jobId())
+        verify(handler).execute(argThat(cmd -> "order-1".equals(cmd.orderId())
                 && "CREATE".equals(cmd.action())
                 && "ldap://LDAP01".equals(cmd.targetSystem())), eq("arc.provisioning.assignment"));
     }
 
     @Test
     void shouldIgnoreCommandWhenTargetDoesNotMatch() throws Exception {
-        ProvisioningCommand command = command("job-2", "ad://AD01");
+        ProvisioningCommand command = command("order-2", "ad://AD01");
 
         processor.process(objectMapper.writeValueAsString(command), "arc.provisioning.assignment");
 
@@ -67,10 +67,10 @@ class ProvisioningCommandProcessorTest {
         verify(handler, never()).execute(any(), any());
     }
 
-    private static ProvisioningCommand command(String jobId, String targetSystem) {
+    private static ProvisioningCommand command(String orderId, String targetSystem) {
         return new ProvisioningCommand(
-                jobId, "CREATE", "id-1", "jdupont", targetSystem, "ent-1", "GRP-FIN", "EMEA",
+                orderId, "CREATE", "id-1", "jdupont", targetSystem, "ent-1", "GRP-FIN", "EMEA",
                 List.of(new ProvisioningCommand.ChangedAttribute("email", null, "j@example.com")),
-                OffsetDateTime.parse("2026-06-01T08:00:00+02:00"), "corr-" + jobId, null, null, null);
+                OffsetDateTime.parse("2026-06-01T08:00:00+02:00"), "corr-" + orderId, null, null, null, null);
     }
 }
