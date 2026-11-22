@@ -1,0 +1,67 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version de l'image Docker a deployer"
+        required: true
+        type: string
+      runner_label:
+        description: "Label du runner self-hosted"
+        required: false
+        type: string
+        default: "iap-k3s"
+      env_name:
+        description: "Nom de l'environnement GitHub"
+        required: false
+        type: string
+        default: "prod"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version de l'image Docker a deployer"
+        required: true
+        type: string
+      runner_label:
+        description: "Label du runner self-hosted"
+        required: false
+        type: string
+        default: "iap-k3s"
+      env_name:
+        description: "Nom de l'environnement GitHub"
+        required: false
+        type: string
+        default: "prod"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/arc-agent-openldap
+
+jobs:
+  deploy:
+    environment: ${{ inputs.env_name }}
+    runs-on: [self-hosted, arc-agent-openldap]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Write kubeconfig to file
+        run: echo "${{ secrets.KUBECONFIG }}" > kubeconfig.yaml
+
+      - name: Prepare deployment
+        run: echo "Preparing deployment for arc-agent-openldap version ${{ inputs.version }} to env ${{ inputs.env_name }}"
+
+      - name: Checkout arc-kubeorchestrator
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: arckit-iam/arc-kubeorchestrator
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: arc-kubeorchestrator
+
+      - name: Apply all FluxCD manifests (arc-agent-openldap)
+        env:
+          KUBECONFIG: ${{ github.workspace }}/kubeconfig.yaml
+        run: |
+          kubectl apply -f arc-kubeorchestrator/flux/gitrepo.yaml
+          kubectl apply -f arc-kubeorchestrator/flux/arc-agent-openldap/

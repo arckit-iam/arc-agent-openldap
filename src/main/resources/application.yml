@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: arc-agent-openldap
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${ARC_AGENT_CONSUMER_GROUP:arc-agent-openldap}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+arc:
+  agent:
+    target-system: ${TARGET_SYSTEM:ldap://LDAP01}
+    dry-run: ${ARC_AGENT_DRY_RUN:true}
+    topics:
+      identity: ${ARC_TOPICS_PROVISIONING_IDENTITY:arc.provisioning.identity}
+      assignment: ${ARC_TOPICS_PROVISIONING_ASSIGNMENT:arc.provisioning.assignment}
+      entitlement: ${ARC_TOPICS_PROVISIONING_ENTITLEMENT:arc.provisioning.entitlement}
+    ldap:
+      url: ${ARC_AGENT_LDAP_URL:ldap://localhost:10389}
+      base-dn: ${ARC_AGENT_LDAP_BASE_DN:dc=example,dc=com}
+      bind-dn: ${ARC_AGENT_LDAP_BIND_DN:}
+      bind-password: ${ARC_AGENT_LDAP_BIND_PASSWORD:}
+      users-ou: ${ARC_AGENT_LDAP_USERS_OU:ou=Users}
+      groups-ou: ${ARC_AGENT_LDAP_GROUPS_OU:ou=Groups}
+      group-placeholder-member: ${ARC_AGENT_LDAP_GROUP_PLACEHOLDER_MEMBER:}
+
+logging:
+  level:
+    com.instantaccessprovider.arcagentopenldap: INFO
