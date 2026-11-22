@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 DÃ©dale Solutions
+// SPDX-FileCopyrightText: 2026 Dédale Solutions
 // SPDX-License-Identifier: EUPL-1.2
 
 package com.instantaccessprovider.arcagentopenldap.infrastructure.ldap;
